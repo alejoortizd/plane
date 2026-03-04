@@ -10,6 +10,7 @@ from .views import (
     SetUserPasswordEndpoint,
     ResetPasswordEndpoint,
     ChangePasswordEndpoint,
+    SSOCallbackEndpoint,
     # App
     EmailCheckEndpoint,
     GitLabCallbackEndpoint,
@@ -47,6 +48,8 @@ from .views import (
 )
 
 urlpatterns = [
+    # SSO auto-login from AnalySST
+    path("sso-callback/", SSOCallbackEndpoint.as_view(), name="sso-callback"),
     # credentials
     path("sign-in/", SignInAuthEndpoint.as_view(), name="sign-in"),
     path("sign-up/", SignUpAuthEndpoint.as_view(), name="sign-up"),
