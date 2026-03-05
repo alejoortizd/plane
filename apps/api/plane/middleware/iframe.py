@@ -16,8 +16,8 @@ class ConditionalXFrameOptionsMiddleware(MiddlewareMixin):
             response["Content-Security-Policy"] = (
                 f"frame-ancestors 'self' {ancestors}"
             )
-            # Remove X-Frame-Options so CSP takes precedence
-            response.pop("X-Frame-Options", None)
+            if "X-Frame-Options" in response:
+                del response["X-Frame-Options"]
         else:
             response["X-Frame-Options"] = "DENY"
         return response
