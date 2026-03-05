@@ -1,9 +1,12 @@
+import json
 import os
 import uuid
 
 import jwt
 from django.http import HttpResponseRedirect, JsonResponse
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.csrf import csrf_exempt
 
 from plane.authentication.utils.login import user_login
 from plane.authentication.utils.redirection_path import get_redirection_path
@@ -81,3 +84,79 @@ class SSOCallbackEndpoint(View):
         base = base_host(request=request, is_app=True)
         url = f"{base}/{next_path}" if next_path else base
         return HttpResponseRedirect(url)
+
+
+def _provision_user(email, first_name, last_name):
+    """Shared helper: find-or-create a Plane user + profile + workspace membership."""
+    created = False
+    user = User.objects.filter(email=email).first()
+
+    if user is None:
+        user = User.objects.create(
+            email=email,
+            username=uuid.uuid4().hex,
+            first_name=first_name,
+            last_name=last_name,
+            display_name=f"{first_name} {last_name}".strip() or email,
+            is_email_verified=True,
+            is_password_autoset=True,
+            is_active=True,
+        )
+        Profile.objects.get_or_create(
+            user=user,
+            defaults={"language": "es"},
+        )
+        created = True
+
+    default_ws = Workspace.objects.filter(
+        slug=os.environ.get("DEFAULT_WORKSPACE_SLUG", "analysst")
+    ).first()
+    if default_ws:
+        WorkspaceMember.objects.get_or_create(
+            workspace=default_ws,
+            member=user,
+            defaults={"role": 15},
+        )
+
+    return user, created
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class SSOProvisionEndpoint(View):
+    """
+    Server-to-server endpoint called by AnalySST backend to pre-provision
+    a user in Plane (create account + add to default workspace).
+
+    POST /auth/sso-provision/
+    Headers:  Authorization: Bearer <SSO_SHARED_SECRET>
+    Body:     {"email": "...", "first_name": "...", "last_name": "..."}
+    """
+
+    def post(self, request):
+        secret = os.environ.get("SSO_SHARED_SECRET", "")
+        if not secret:
+            return JsonResponse({"error": "SSO not configured"}, status=503)
+
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header != f"Bearer {secret}":
+            return JsonResponse({"error": "Unauthorized"}, status=401)
+
+        try:
+            body = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        email = (body.get("email") or "").strip().lower()
+        if not email:
+            return JsonResponse({"error": "email is required"}, status=400)
+
+        first_name = body.get("first_name", "")
+        last_name = body.get("last_name", "")
+
+        user, created = _provision_user(email, first_name, last_name)
+
+        return JsonResponse({
+            "id": str(user.id),
+            "email": user.email,
+            "created": created,
+        }, status=201 if created else 200)

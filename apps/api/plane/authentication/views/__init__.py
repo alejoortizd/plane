@@ -41,4 +41,4 @@ from .space.password_management import (
     ResetPasswordSpaceEndpoint,
 )
 from .app.password_management import ForgotPasswordEndpoint, ResetPasswordEndpoint
-from .app.sso import SSOCallbackEndpoint
+from .app.sso import SSOCallbackEndpoint, SSOProvisionEndpoint
