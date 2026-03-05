@@ -20,12 +20,16 @@ http {
   server {
     listen 3000;
 
+    resolver ${DNS_RESOLVER} valid=10s ipv6=off;
+
     add_header X-Content-Type-Options "nosniff" always;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-XSS-Protection "1; mode=block" always;
 
+    set $backend ${API_UPSTREAM};
+
     location /api/ {
-      proxy_pass ${API_UPSTREAM};
+      proxy_pass $backend;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -34,7 +38,7 @@ http {
     }
 
     location /auth/ {
-      proxy_pass ${API_UPSTREAM};
+      proxy_pass $backend;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
