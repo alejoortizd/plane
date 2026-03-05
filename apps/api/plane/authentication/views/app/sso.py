@@ -8,7 +8,7 @@ from django.views import View
 from plane.authentication.utils.login import user_login
 from plane.authentication.utils.redirection_path import get_redirection_path
 from plane.authentication.utils.host import base_host
-from plane.db.models import User, Profile
+from plane.db.models import User, Profile, Workspace, WorkspaceMember
 
 
 class SSOCallbackEndpoint(View):
@@ -60,7 +60,20 @@ class SSOCallbackEndpoint(View):
                 is_password_autoset=True,
                 is_active=True,
             )
-            Profile.objects.get_or_create(user=user)
+            Profile.objects.get_or_create(
+                user=user,
+                defaults={"language": "es"},
+            )
+
+            default_ws = Workspace.objects.filter(
+                slug=os.environ.get("DEFAULT_WORKSPACE_SLUG", "analysst")
+            ).first()
+            if default_ws:
+                WorkspaceMember.objects.get_or_create(
+                    workspace=default_ws,
+                    member=user,
+                    defaults={"role": 15},
+                )
 
         user_login(request=request, user=user, is_app=True)
 
