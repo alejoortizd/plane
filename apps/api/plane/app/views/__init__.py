@@ -238,3 +238,13 @@ from .notification.base import MarkAllReadNotificationViewSet
 from .user.base import AccountEndpoint, ProfileEndpoint, UserSessionEndpoint
 
 from .timezone.base import TimezoneEndpoint
+
+from .whatsapp import (
+    WhatsAppStatusEndpoint,
+    WhatsAppQREndpoint,
+    WhatsAppDisconnectEndpoint,
+    WhatsAppSendEndpoint,
+    WhatsAppMessagesEndpoint,
+    WhatsAppResendEndpoint,
+    WhatsAppWebhookEndpoint,
+)
