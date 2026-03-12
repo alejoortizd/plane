@@ -288,6 +288,8 @@ CELERY_IMPORTS = (
     # issue version tasks
     "plane.bgtasks.issue_version_sync",
     "plane.bgtasks.issue_description_version_sync",
+    # whatsapp notifications
+    "plane.bgtasks.whatsapp_notification_task",
 )
 
 FILE_SIZE_LIMIT = int(os.environ.get("FILE_SIZE_LIMIT", 5242880))
@@ -469,3 +471,8 @@ if ENABLE_DRF_SPECTACULAR:
 # MongoDB Settings
 MONGO_DB_URL = os.environ.get("MONGO_DB_URL", False)
 MONGO_DB_DATABASE = os.environ.get("MONGO_DB_DATABASE", False)
+
+# Evolution API (WhatsApp)
+EVOLUTION_API_URL = os.environ.get("EVOLUTION_API_URL", "")
+EVOLUTION_API_GLOBAL_KEY = os.environ.get("EVOLUTION_API_GLOBAL_KEY", "")
+EVOLUTION_INSTANCE_NAME = os.environ.get("EVOLUTION_INSTANCE_NAME", "consultorio")

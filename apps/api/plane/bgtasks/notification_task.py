@@ -4,8 +4,11 @@
 
 # Python imports
 import json
+import logging
 import uuid
 from uuid import UUID
+
+logger = logging.getLogger("plane.worker")
 
 
 # Module imports
@@ -668,6 +671,50 @@ def notifications(
             # Bulk create notifications
             Notification.objects.bulk_create(bulk_notifications, batch_size=100)
             EmailNotificationLog.objects.bulk_create(bulk_email_logs, batch_size=100, ignore_conflicts=True)
+
+            # Dispatch WhatsApp notifications
+            try:
+                from plane.bgtasks.whatsapp_notification_task import (
+                    dispatch_whatsapp_notifications,
+                )
+
+                wa_activities = []
+                for act in issue_activities_created:
+                    if act.get("issue_detail", {}).get("id") != issue_id:
+                        continue
+                    if act.get("field") == "description":
+                        continue
+                    wa_act = {
+                        "field": act.get("field", ""),
+                        "verb": act.get("verb", ""),
+                        "old_value": act.get("old_value", ""),
+                        "new_value": act.get("new_value", ""),
+                        "issue_comment": "",
+                    }
+                    if act.get("issue_comment"):
+                        comment_obj = IssueComment.objects.filter(pk=act["issue_comment"]).first()
+                        if comment_obj:
+                            wa_act["issue_comment"] = comment_obj.comment_stripped or ""
+                    wa_activities.append(wa_act)
+
+                dispatch_whatsapp_notifications.delay(
+                    receiver_ids=[str(uid) for uid in issue_subscribers],
+                    actor_id=actor_id,
+                    issue_id=str(issue_id),
+                    project_identifier=str(issue.project.identifier),
+                    project_name=str(project.name),
+                    issue_name=str(issue.name),
+                    issue_sequence_id=issue.sequence_id,
+                    activities=wa_activities,
+                    sender_type="in_app:issue_activities:assigned"
+                    if any(uid in issue_assignees for uid in issue_subscribers)
+                    else "",
+                    mention_ids=[str(m) for m in new_mentions if m != actor_id],
+                    comment_mention_ids=[str(m) for m in comment_mentions if m != actor_id],
+                )
+            except Exception as e:
+                logger.warning("WhatsApp dispatch failed: %s", e)
+
         return
     except Exception as e:
         print(e)
