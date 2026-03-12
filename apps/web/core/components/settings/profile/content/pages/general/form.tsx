@@ -15,6 +15,7 @@ import { TOAST_TYPE, setPromiseToast, setToast } from "@plane/propel/toast";
 import { EFileAssetType } from "@plane/types";
 import type { IUser, TUserProfile } from "@plane/types";
 import { Input } from "@plane/ui";
+import { PhoneInput } from "@/components/common/phone-input";
 import { getFileURL } from "@plane/utils";
 // components
 import { DeactivateAccountModal } from "@/components/account/deactivate-account-modal";
@@ -40,6 +41,7 @@ type TUserProfileForm = {
   last_name: string;
   display_name: string;
   email: string;
+  mobile_number: string;
   role: string;
   language: string;
   user_timezone: string;
@@ -75,6 +77,7 @@ export const GeneralProfileSettingsForm = observer(function GeneralProfileSettin
       last_name: user.last_name || "",
       display_name: user.display_name || "",
       email: user.email || "",
+      mobile_number: user.mobile_number || "",
       role: profile.role || "Product / Project Manager",
       language: profile.language || "en",
       user_timezone: user.user_timezone || "Asia/Kolkata",
@@ -123,6 +126,7 @@ export const GeneralProfileSettingsForm = observer(function GeneralProfileSettin
       last_name: formData.last_name,
       avatar_url: formData.avatar_url,
       display_name: formData?.display_name,
+      mobile_number: formData.mobile_number || null,
     };
 
     try {
@@ -216,9 +220,7 @@ export const GeneralProfileSettingsForm = observer(function GeneralProfileSettin
                         <img
                           src={getFileURL(userAvatar)}
                           className="absolute top-0 left-0 h-full w-full rounded-lg object-cover"
-                          onClick={() => setIsImageUploadModalOpen(true)}
                           alt={currentUser?.display_name}
-                          role="button"
                         />
                       </div>
                     )}
@@ -376,6 +378,16 @@ export const GeneralProfileSettingsForm = observer(function GeneralProfileSettin
                     {t("account_settings.profile.change_email_modal.title")}
                   </button>
                 )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <h4 className="text-13 font-medium text-secondary">Teléfono / WhatsApp</h4>
+                <Controller
+                  control={control}
+                  name="mobile_number"
+                  render={({ field: { value, onChange } }) => (
+                    <PhoneInput value={value} onChange={onChange} defaultCountry="CO" placeholder="+57 300 123 4567" />
+                  )}
+                />
               </div>
             </div>
           </div>

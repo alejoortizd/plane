@@ -3,6 +3,7 @@
 @import "@plane/propel/styles/react-day-picker.css";
 @import "./power-k.css";
 @import "./emoji.css";
+@import "react-phone-number-input/style.css";
 @plugin "@tailwindcss/typography";
 
 /* stickies and editor colors */
@@ -197,4 +198,47 @@
     0 0 8px --alpha(var(--background-color-accent-primary) / 60%),
     0 0 4px --alpha(var(--background-color-accent-primary) / 40%) !important;
   will-change: transform, opacity;
+}
+
+/* Phone input overrides to match Plane design system */
+.plane-phone-input {
+  display: flex;
+  gap: 0.25rem;
+}
+.plane-phone-input .PhoneInputCountry {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border-color-primary, #e5e5e5);
+  border-radius: 0.375rem;
+  background: transparent;
+  cursor: pointer;
+}
+.plane-phone-input .PhoneInputCountryIcon {
+  width: 1.25rem;
+  height: 0.875rem;
+  overflow: hidden;
+  border-radius: 2px;
+}
+.plane-phone-input .PhoneInputCountryIcon--border {
+  box-shadow: none;
+}
+.plane-phone-input .PhoneInputInput {
+  flex: 1;
+  padding: 0.4375rem 0.75rem;
+  border: 1px solid var(--border-color-primary, #e5e5e5);
+  border-radius: 0.375rem;
+  background: transparent;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--text-color-primary, #171717);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.plane-phone-input .PhoneInputInput::placeholder {
+  color: var(--text-color-tertiary, #a3a3a3);
+}
+.plane-phone-input .PhoneInputInput:focus {
+  border-color: var(--background-color-accent-primary, #3f76ff);
 }

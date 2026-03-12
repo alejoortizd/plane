@@ -31,7 +31,6 @@ class UserSerializer(BaseSerializer):
         read_only_fields = [
             "id",
             "username",
-            "mobile_number",
             "email",
             "token",
             "created_at",
@@ -83,6 +82,7 @@ class UserMeSerializer(BaseSerializer):
             "is_email_verified",
             "last_login_medium",
             "last_login_time",
+            "mobile_number",
         ]
         read_only_fields = fields
 
