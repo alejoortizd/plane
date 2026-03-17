@@ -697,8 +697,31 @@ def notifications(
                             wa_act["issue_comment"] = comment_obj.comment_stripped or ""
                     wa_activities.append(wa_act)
 
+                wa_assignee_str_ids = {str(uid) for uid in issue_assignees}
+
+                wa_receiver_ids = set(str(uid) for uid in issue_subscribers)
+                wa_receiver_ids |= wa_assignee_str_ids
+                if issue.created_by_id:
+                    wa_receiver_ids.add(str(issue.created_by_id))
+                wa_receiver_ids.discard(actor_id)
+
+                wa_mention_ids = [str(m) for m in new_mentions if m != actor_id]
+                wa_comment_mention_ids = [str(m) for m in comment_mentions if m != actor_id]
+
+                logger.info(
+                    "WhatsApp pipeline for issue %s: subscribers=%d, assignees=%d, "
+                    "combined_receivers=%d, mentions=%d, comment_mentions=%d, activities=%d",
+                    issue_id,
+                    len(issue_subscribers),
+                    len(wa_assignee_str_ids),
+                    len(wa_receiver_ids),
+                    len(wa_mention_ids),
+                    len(wa_comment_mention_ids),
+                    len(wa_activities),
+                )
+
                 dispatch_whatsapp_notifications.delay(
-                    receiver_ids=[str(uid) for uid in issue_subscribers],
+                    receiver_ids=list(wa_receiver_ids),
                     actor_id=actor_id,
                     issue_id=str(issue_id),
                     project_identifier=str(issue.project.identifier),
@@ -707,13 +730,14 @@ def notifications(
                     issue_sequence_id=issue.sequence_id,
                     activities=wa_activities,
                     sender_type="in_app:issue_activities:assigned"
-                    if any(uid in issue_assignees for uid in issue_subscribers)
+                    if wa_receiver_ids & wa_assignee_str_ids
                     else "",
-                    mention_ids=[str(m) for m in new_mentions if m != actor_id],
-                    comment_mention_ids=[str(m) for m in comment_mentions if m != actor_id],
+                    mention_ids=wa_mention_ids,
+                    comment_mention_ids=wa_comment_mention_ids,
+                    workspace_id=str(project.workspace_id),
                 )
             except Exception as e:
-                logger.warning("WhatsApp dispatch failed: %s", e)
+                logger.error("WhatsApp dispatch failed: %s", e, exc_info=True)
 
         return
     except Exception as e:

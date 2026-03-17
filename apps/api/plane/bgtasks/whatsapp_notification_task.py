@@ -10,7 +10,7 @@ import logging
 from celery import shared_task
 from django.conf import settings
 
-from plane.db.models import User
+from plane.db.models import User, WhatsAppMessage
 
 logger = logging.getLogger("plane.worker")
 
@@ -127,20 +127,36 @@ def _build_mention_message(
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def send_whatsapp_notification(self, phone: str, message: str):
-    """Send a single WhatsApp message via Evolution API."""
+def send_whatsapp_notification(self, phone: str, message: str, workspace_id: str | None = None):
+    """Send a single WhatsApp message via Evolution API and log to DB."""
     if not getattr(settings, "EVOLUTION_API_URL", ""):
+        logger.warning("WhatsApp skipped for %s: EVOLUTION_API_URL not configured", phone)
         return {"status": "skipped", "reason": "evolution_api_not_configured"}
+
+    msg_record = WhatsAppMessage.objects.create(
+        workspace_id=workspace_id,
+        phone=phone,
+        direction=WhatsAppMessage.Direction.OUTBOUND,
+        message_type=WhatsAppMessage.MessageType.NOTIFICATION,
+        content=message,
+        status=WhatsAppMessage.Status.PENDING,
+    )
 
     try:
         from plane.utils.evolution_client import EvolutionAPIClient
 
         client = EvolutionAPIClient()
         result = client.send_text(phone, message)
-        logger.info("WhatsApp sent to %s", phone)
+        msg_record.status = WhatsAppMessage.Status.SENT
+        msg_record.evolution_message_id = result.get("key", {}).get("id", "")
+        msg_record.save(update_fields=["status", "evolution_message_id"])
+        logger.info("WhatsApp notification sent to %s (record %s)", phone, msg_record.pk)
         return {"status": "sent", "phone": phone, "result": str(result)[:200]}
     except Exception as exc:
-        logger.error("WhatsApp to %s failed: %s", phone, exc)
+        logger.error("WhatsApp notification to %s failed: %s", phone, exc)
+        msg_record.status = WhatsAppMessage.Status.FAILED
+        msg_record.error_detail = str(exc)[:500]
+        msg_record.save(update_fields=["status", "error_detail"])
         try:
             self.retry(exc=exc)
         except self.MaxRetriesExceededError:
@@ -160,26 +176,44 @@ def dispatch_whatsapp_notifications(
     sender_type: str = "",
     mention_ids: list[str] | None = None,
     comment_mention_ids: list[str] | None = None,
+    workspace_id: str | None = None,
 ):
     """
     Dispatch WhatsApp notifications to all receivers that have a mobile_number.
     Called from the notifications task after in-app notifications are created.
     """
-    if not getattr(settings, "EVOLUTION_API_URL", ""):
-        return
-
     mention_ids = mention_ids or []
     comment_mention_ids = comment_mention_ids or []
+    issue_identifier = f"{project_identifier}-{issue_sequence_id}"
+
+    logger.info(
+        "WhatsApp dispatch START for %s: receivers=%d, mentions=%d, comment_mentions=%d, activities=%d",
+        issue_identifier,
+        len(receiver_ids),
+        len(mention_ids),
+        len(comment_mention_ids),
+        len(activities),
+    )
+
+    if not getattr(settings, "EVOLUTION_API_URL", ""):
+        logger.error(
+            "WhatsApp dispatch ABORTED for %s: EVOLUTION_API_URL is not configured",
+            issue_identifier,
+        )
+        return
 
     actor = User.objects.filter(pk=actor_id).first()
     actor_name = actor.display_name if actor else "Alguien"
-
-    issue_identifier = f"{project_identifier}-{issue_sequence_id}"
 
     all_user_ids = set(receiver_ids) | set(mention_ids) | set(comment_mention_ids)
     all_user_ids.discard(actor_id)
 
     if not all_user_ids:
+        logger.warning(
+            "WhatsApp dispatch SKIPPED for %s: no target users after excluding actor %s",
+            issue_identifier,
+            actor_id,
+        )
         return
 
     users = User.objects.filter(
@@ -188,6 +222,21 @@ def dispatch_whatsapp_notifications(
     ).exclude(mobile_number="")
 
     user_map = {str(u.pk): u for u in users}
+
+    if not user_map:
+        logger.warning(
+            "WhatsApp dispatch SKIPPED for %s: %d target user(s) but none have mobile_number set",
+            issue_identifier,
+            len(all_user_ids),
+        )
+        return
+
+    logger.info(
+        "WhatsApp dispatch for %s: %d/%d users have mobile_number",
+        issue_identifier,
+        len(user_map),
+        len(all_user_ids),
+    )
 
     notified_phones: set[str] = set()
 
@@ -206,7 +255,7 @@ def dispatch_whatsapp_notifications(
             sender_type=sender_type,
         )
         if msg:
-            send_whatsapp_notification.delay(user.mobile_number, msg)
+            send_whatsapp_notification.delay(user.mobile_number, msg, workspace_id=workspace_id)
             notified_phones.add(user.mobile_number)
 
     for uid in comment_mention_ids:
@@ -216,7 +265,7 @@ def dispatch_whatsapp_notifications(
         if not user or user.mobile_number in notified_phones:
             continue
         msg = _build_mention_message(actor_name, issue_identifier, issue_name, is_comment_mention=True)
-        send_whatsapp_notification.delay(user.mobile_number, msg)
+        send_whatsapp_notification.delay(user.mobile_number, msg, workspace_id=workspace_id)
         notified_phones.add(user.mobile_number)
 
     for uid in mention_ids:
@@ -226,11 +275,11 @@ def dispatch_whatsapp_notifications(
         if not user or user.mobile_number in notified_phones:
             continue
         msg = _build_mention_message(actor_name, issue_identifier, issue_name, is_comment_mention=False)
-        send_whatsapp_notification.delay(user.mobile_number, msg)
+        send_whatsapp_notification.delay(user.mobile_number, msg, workspace_id=workspace_id)
         notified_phones.add(user.mobile_number)
 
     logger.info(
-        "WhatsApp dispatch: %d messages for issue %s",
-        len(notified_phones),
+        "WhatsApp dispatch DONE for %s: %d message(s) queued",
         issue_identifier,
+        len(notified_phones),
     )
