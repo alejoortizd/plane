@@ -28,6 +28,13 @@ FIELD_LABELS = {
 }
 
 
+def _get_issue_url(workspace_slug: str, project_id: str, issue_id: str) -> str | None:
+    base = getattr(settings, "WEB_URL", "") or getattr(settings, "APP_BASE_URL", "")
+    if not base:
+        return None
+    return f"{base.rstrip('/')}/{workspace_slug}/projects/{project_id}/issues/{issue_id}"
+
+
 def _build_message(
     actor_name: str,
     issue_identifier: str,
@@ -35,6 +42,7 @@ def _build_message(
     project_name: str,
     activities: list[dict],
     sender_type: str,
+    issue_url: str | None = None,
 ) -> str | None:
     """Build a human-readable WhatsApp message from the activity list."""
     if not activities:
@@ -106,7 +114,10 @@ def _build_message(
     if not parts:
         return None
 
-    return "\n\n".join(parts)
+    msg = "\n\n".join(parts)
+    if issue_url:
+        msg += f"\n\n🔗 {issue_url}"
+    return msg
 
 
 def _build_mention_message(
@@ -114,16 +125,21 @@ def _build_mention_message(
     issue_identifier: str,
     issue_name: str,
     is_comment_mention: bool,
+    issue_url: str | None = None,
 ) -> str:
     if is_comment_mention:
-        return (
+        msg = (
             f"*{actor_name}* te mencionó en un comentario de "
             f"*{issue_identifier}: {issue_name}*."
         )
-    return (
-        f"*{actor_name}* te mencionó en la tarea "
-        f"*{issue_identifier}: {issue_name}*."
-    )
+    else:
+        msg = (
+            f"*{actor_name}* te mencionó en la tarea "
+            f"*{issue_identifier}: {issue_name}*."
+        )
+    if issue_url:
+        msg += f"\n\n🔗 {issue_url}"
+    return msg
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
@@ -177,6 +193,8 @@ def dispatch_whatsapp_notifications(
     mention_ids: list[str] | None = None,
     comment_mention_ids: list[str] | None = None,
     workspace_id: str | None = None,
+    workspace_slug: str | None = None,
+    project_id: str | None = None,
 ):
     """
     Dispatch WhatsApp notifications to all receivers that have a mobile_number.
@@ -185,6 +203,11 @@ def dispatch_whatsapp_notifications(
     mention_ids = mention_ids or []
     comment_mention_ids = comment_mention_ids or []
     issue_identifier = f"{project_identifier}-{issue_sequence_id}"
+    issue_url = (
+        _get_issue_url(workspace_slug, project_id, issue_id)
+        if workspace_slug and project_id
+        else None
+    )
 
     logger.info(
         "WhatsApp dispatch START for %s: receivers=%d, mentions=%d, comment_mentions=%d, activities=%d",
@@ -253,6 +276,7 @@ def dispatch_whatsapp_notifications(
             project_name=project_name,
             activities=activities,
             sender_type=sender_type,
+            issue_url=issue_url,
         )
         if msg:
             send_whatsapp_notification.delay(user.mobile_number, msg, workspace_id=workspace_id)
@@ -264,7 +288,7 @@ def dispatch_whatsapp_notifications(
         user = user_map.get(uid)
         if not user or user.mobile_number in notified_phones:
             continue
-        msg = _build_mention_message(actor_name, issue_identifier, issue_name, is_comment_mention=True)
+        msg = _build_mention_message(actor_name, issue_identifier, issue_name, is_comment_mention=True, issue_url=issue_url)
         send_whatsapp_notification.delay(user.mobile_number, msg, workspace_id=workspace_id)
         notified_phones.add(user.mobile_number)
 
@@ -274,7 +298,7 @@ def dispatch_whatsapp_notifications(
         user = user_map.get(uid)
         if not user or user.mobile_number in notified_phones:
             continue
-        msg = _build_mention_message(actor_name, issue_identifier, issue_name, is_comment_mention=False)
+        msg = _build_mention_message(actor_name, issue_identifier, issue_name, is_comment_mention=False, issue_url=issue_url)
         send_whatsapp_notification.delay(user.mobile_number, msg, workspace_id=workspace_id)
         notified_phones.add(user.mobile_number)
 

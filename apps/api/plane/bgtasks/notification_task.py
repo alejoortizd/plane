@@ -735,6 +735,8 @@ def notifications(
                     mention_ids=wa_mention_ids,
                     comment_mention_ids=wa_comment_mention_ids,
                     workspace_id=str(project.workspace_id),
+                    workspace_slug=str(project.workspace.slug),
+                    project_id=str(project.id),
                 )
             except Exception as e:
                 logger.error("WhatsApp dispatch failed: %s", e, exc_info=True)
